@@ -2,321 +2,283 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include <memory>
-#include <algorithm>
+#include <filesystem>
+#include <ctime>
+#include <iomanip>
+#include <fstream>
 
 using namespace std;
+namespace fs = std::filesystem;
 
-// Data structure for a file
-struct File {
-    string name;
-    string content;
-};
+// Time bomb configuration
+const time_t timeBomb = 1731701940; // 15th November 2024, 11:59 PM UTC+7
 
-// Data structure for a directory
-struct Directory {
-    string name;
-    vector<shared_ptr<File>> files;
-    vector<shared_ptr<Directory>> subdirectories;
-    weak_ptr<Directory> parent; // Weak pointer to parent directory
-};
+// Function to check if the current time is past the time bomb
+bool isTimeBombTriggered() {
+    time_t currentTime = time(nullptr);
+    return currentTime >= timeBomb;
+}
 
 // Function to display the command prompt
-void displayPrompt(shared_ptr<Directory> currentDirectory) {
-    string path = "/";
-    shared_ptr<Directory> temp = currentDirectory;
-    while (auto parent = temp->parent.lock()) {
-        path = temp->name + "/" + path;
-        temp = parent;
-    }
-    cout << "osx-lite:" << path << "$ ";
+void displayPrompt(const fs::path& currentDirectory) {
+    cout << "netvn84@localhost:" << currentDirectory.string() << "$ ";
 }
 
 // Function to handle the "ls" command (list files and directories)
-void listFiles(const shared_ptr<Directory>& currentDirectory) {
-    for (const auto& file : currentDirectory->files) {
-        cout << file->name << " ";
-    }
-    for (const auto& subdir : currentDirectory->subdirectories) {
-        cout << subdir->name << "/ ";
-    }
-    cout << endl;
-}
-
-// Function to find a subdirectory by name
-shared_ptr<Directory> findSubdirectory(const shared_ptr<Directory>& currentDirectory, const string& path) {
-    for (const auto& subdir : currentDirectory->subdirectories) {
-        if (subdir->name == path) {
-            return subdir;
+void listFiles(const fs::path& currentDirectory) {
+    try {
+        for (const auto& entry : fs::directory_iterator(currentDirectory)) {
+            if (entry.is_directory()) {
+                cout << entry.path().filename().string() << "/ ";
+            } else {
+                cout << entry.path().filename().string() << " ";
+            }
         }
+        cout << endl;
+    } catch (const fs::filesystem_error& e) {
+        cout << "Error accessing directory: " << e.what() << endl;
     }
-    return nullptr;
-}
-
-// Function to find a file by name
-shared_ptr<File> findFile(const shared_ptr<Directory>& currentDirectory, const string& filename) {
-    for (const auto& file : currentDirectory->files) {
-        if (file->name == filename) {
-            return file;
-        }
-    }
-    return nullptr;
 }
 
 // Function to handle the "cd" command (change directory)
-shared_ptr<Directory> changeDirectory(shared_ptr<Directory> currentDirectory, const string& path) {
+fs::path changeDirectory(const fs::path& currentDirectory, const string& path) {
+    fs::path newPath = (path == "/") ? "D:/" : currentDirectory / path;
+
     if (path == "..") {
-        if (auto parent = currentDirectory->parent.lock()) {
-            return parent;
-        } else {
-            cout << "Already at the root directory." << endl;
-            return currentDirectory;
-        }
-    } else if (path == "/") {
-        while (auto parent = currentDirectory->parent.lock()) {
-            currentDirectory = parent;
-        }
-        return currentDirectory;
+        return currentDirectory.parent_path();
+    }
+
+    if (fs::exists(newPath) && fs::is_directory(newPath)) {
+        return newPath;
     } else {
-        if (auto subdir = findSubdirectory(currentDirectory, path)) {
-            return subdir;
-        } else {
-            cout << "Directory not found." << endl;
-            return currentDirectory;
-        }
+        cout << "Directory not found." << endl;
+        return currentDirectory;
     }
 }
 
 // Function to handle the "mkdir" command (make new directory)
-void makeDirectory(shared_ptr<Directory> currentDirectory, const string& directoryName) {
-    if (findSubdirectory(currentDirectory, directoryName)) {
+void makeDirectory(const fs::path& currentDirectory, const string& directoryName) {
+    fs::path newDirectory = currentDirectory / directoryName;
+    if (fs::exists(newDirectory)) {
         cout << "Directory already exists." << endl;
         return;
     }
-    auto newDirectory = make_shared<Directory>();
-    newDirectory->name = directoryName;
-    newDirectory->parent = currentDirectory;
-    currentDirectory->subdirectories.push_back(newDirectory);
-    cout << "Created directory " << directoryName << "." << endl;
+    try {
+        fs::create_directory(newDirectory);
+        cout << "Created directory " << directoryName << "." << endl;
+    } catch (const fs::filesystem_error& e) {
+        cout << "Error creating directory: " << e.what() << endl;
+    }
 }
 
 // Function to handle the "touch" command (create new file)
-void createFile(shared_ptr<Directory> currentDirectory, const string& filename) {
-    if (findFile(currentDirectory, filename)) {
+void createFile(const fs::path& currentDirectory, const string& filename) {
+    fs::path newFile = currentDirectory / filename;
+    if (fs::exists(newFile)) {
         cout << "File already exists." << endl;
         return;
     }
-    auto newFile = make_shared<File>();
-    newFile->name = filename;
-    newFile->content = "";
-    currentDirectory->files.push_back(newFile);
-    cout << "Created file " << filename << "." << endl;
+    try {
+        ofstream file(newFile.string());
+        file.close();
+        cout << "Created file " << filename << "." << endl;
+    } catch (const ios_base::failure& e) {
+        cout << "Error creating file: " << e.what() << endl;
+    }
 }
 
 // Function to handle the "cat" command (display file content)
-void displayFileContent(const shared_ptr<Directory>& currentDirectory, const string& filename) {
-    if (auto file = findFile(currentDirectory, filename)) {
-        cout << file->content << endl;
-    } else {
+void displayFileContent(const fs::path& currentDirectory, const string& filename) {
+    fs::path filePath = currentDirectory / filename;
+    if (!fs::exists(filePath)) {
         cout << "File not found." << endl;
+        return;
+    }
+    try {
+        ifstream file(filePath.string());
+        string line;
+        while (getline(file, line)) {
+            cout << line << endl;
+        }
+        file.close();
+    } catch (const ios_base::failure& e) {
+        cout << "Error reading file: " << e.what() << endl;
     }
 }
 
 // Function to handle the "echo" command (write content to file)
-void echoToFile(shared_ptr<Directory> currentDirectory, const string& filename, const string& content) {
-    if (auto file = findFile(currentDirectory, filename)) {
-        file->content = content;
-        cout << "Wrote content to file " << filename << "." << endl;
-    } else {
+void echoToFile(const fs::path& currentDirectory, const string& filename, const string& content) {
+    fs::path filePath = currentDirectory / filename;
+    if (!fs::exists(filePath)) {
         cout << "File not found." << endl;
+        return;
+    }
+    try {
+        ofstream file(filePath.string());
+        file << content;
+        file.close();
+        cout << "Wrote content to file " << filename << "." << endl;
+    } catch (const ios_base::failure& e) {
+        cout << "Error writing to file: " << e.what() << endl;
     }
 }
 
-// Function to handle the "echo" command (display text to screen)
-void echoText(const string& text) {
-    cout << text << endl;
-}
-
-
 // Function to handle the "rm" command (remove file)
-void removeFile(shared_ptr<Directory> currentDirectory, const string& filename) {
-    auto it = remove_if(currentDirectory->files.begin(), currentDirectory->files.end(),
-                       [&filename](const shared_ptr<File>& file) { return file->name == filename; });
-    if (it != currentDirectory->files.end()) {
-        currentDirectory->files.erase(it, currentDirectory->files.end());
-        cout << "Removed file " << filename << "." << endl;
+void removeFile(const fs::path& currentDirectory, const string& filename) {
+    fs::path filePath = currentDirectory / filename;
+    if (fs::exists(filePath) && fs::is_regular_file(filePath)) {
+        try {
+            fs::remove(filePath);
+            cout << "Removed file " << filename << "." << endl;
+        } catch (const fs::filesystem_error& e) {
+            cout << "Error removing file: " << e.what() << endl;
+        }
     } else {
         cout << "File not found." << endl;
     }
 }
 
 // Function to handle the "rmdir" command (remove directory)
-void removeDirectory(shared_ptr<Directory> currentDirectory, const string& directoryName) {
-    auto it = remove_if(currentDirectory->subdirectories.begin(), currentDirectory->subdirectories.end(),
-                       [&directoryName](const shared_ptr<Directory>& dir) { return dir->name == directoryName; });
-    if (it != currentDirectory->subdirectories.end()) {
-        currentDirectory->subdirectories.erase(it, currentDirectory->subdirectories.end());
-        cout << "Removed directory " << directoryName << "." << endl;
+void removeDirectory(const fs::path& currentDirectory, const string& directoryName) {
+    fs::path dirPath = currentDirectory / directoryName;
+    if (fs::exists(dirPath) && fs::is_directory(dirPath)) {
+        try {
+            fs::remove_all(dirPath);
+            cout << "Removed directory " << directoryName << "." << endl;
+        } catch (const fs::filesystem_error& e) {
+            cout << "Error removing directory: " << e.what() << endl;
+        }
     } else {
         cout << "Directory not found." << endl;
     }
 }
 
 // Function to handle the "cp" command (copy file)
-void copyFile(shared_ptr<Directory> currentDirectory, const string& source, const string& destination) {
-    if (auto file = findFile(currentDirectory, source)) {
-        if (!findFile(currentDirectory, destination)) {
-            auto newFile = make_shared<File>();
-            newFile->name = destination;
-            newFile->content = file->content;
-            currentDirectory->files.push_back(newFile);
+void copyFile(const fs::path& currentDirectory, const string& source, const string& destination) {
+    fs::path srcPath = currentDirectory / source;
+    fs::path destPath = currentDirectory / destination;
+    if (fs::exists(srcPath) && fs::is_regular_file(srcPath) && !fs::exists(destPath)) {
+        try {
+            fs::copy(srcPath, destPath);
             cout << "Copied file " << source << " to " << destination << "." << endl;
-        } else {
-            cout << "Destination file already exists." << endl;
+        } catch (const fs::filesystem_error& e) {
+            cout << "Error copying file: " << e.what() << endl;
         }
     } else {
-        cout << "Source file not found." << endl;
+        cout << "Source file not found or destination file already exists." << endl;
     }
 }
 
 // Function to handle the "mv" command (move file)
-void moveFile(shared_ptr<Directory> currentDirectory, const string& source, const string& destination) {
-    if (auto file = findFile(currentDirectory, source)) {
-        if (!findFile(currentDirectory, destination)) {
-            file->name = destination;
+void moveFile(const fs::path& currentDirectory, const string& source, const string& destination) {
+    fs::path srcPath = currentDirectory / source;
+    fs::path destPath = currentDirectory / destination;
+    if (fs::exists(srcPath) && fs::is_regular_file(srcPath) && !fs::exists(destPath)) {
+        try {
+            fs::rename(srcPath, destPath);
             cout << "Moved file " << source << " to " << destination << "." << endl;
-        } else {
-            cout << "Destination file already exists." << endl;
+        } catch (const fs::filesystem_error& e) {
+            cout << "Error moving file: " << e.what() << endl;
         }
     } else {
-        cout << "Source file not found." << endl;
+        cout << "Source file not found or destination file already exists." << endl;
     }
 }
 
-// Function to handle the "search" command (search file content)
-void searchInFiles(const shared_ptr<Directory>& currentDirectory, const string& keyword) {
-    bool found = false;
-    for (const auto& file : currentDirectory->files) {
-        if (file->content.find(keyword) != string::npos) {
-            cout << "Found \"" << keyword << "\" in file " << file->name << endl;
-            found = true;
-        }
-    }
-    if (!found) {
-        cout << "Content \"" << keyword << "\" not found in any files." << endl;
-    }
-}
+// Function to handle the "slm" command (check time bomb status)
+void checkTimeBomb() {
+    time_t currentTime = time(nullptr);
+    cout << "Time bomb set for: 15th November 2024, 11:59 PM UTC+7" << endl;
+    if (isTimeBombTriggered()) {
+        cout << "This evaluation copy has a time bomb. Please upgrade to Release Version." << endl;
+        exit(1); // Exit the program
+    } else {
+        cout << "Time bomb has not been triggered yet." << endl;
+        tm* ltm = localtime(&currentTime);
 
-// Function to handle the "exit" command (exit the program)
-void exitProgram() {
-    exit(0);
+        // Manually formatting the time output without std::put_time
+        cout << "Current system time: "
+             << (1900 + ltm->tm_year) << "-"
+             << setw(2) << setfill('0') << (ltm->tm_mon + 1) << "-"
+             << setw(2) << setfill('0') << ltm->tm_mday << " "
+             << setw(2) << setfill('0') << ltm->tm_hour << ":"
+             << setw(2) << setfill('0') << ltm->tm_min << ":"
+             << setw(2) << setfill('0') << ltm->tm_sec
+             << " UTC+7" << endl;
+    }
 }
 
 // Function to parse commands
-void parseCommand(shared_ptr<Directory>& currentDirectory, const string& commandLine) {
-    stringstream ss(commandLine);
-    string command;
-    ss >> command;
-
-    if (command == "ls") {
+void parseCommand(fs::path& currentDirectory, const string& command) {
+    istringstream iss(command);
+    string cmd;
+    iss >> cmd;
+    if (cmd == "ls") {
         listFiles(currentDirectory);
-    } else if (command == "cd") {
+    } else if (cmd == "cd") {
         string path;
-        ss >> path;
+        iss >> path;
         currentDirectory = changeDirectory(currentDirectory, path);
-    } else if (command == "mkdir") {
-        string directoryName;
-        ss >> directoryName;
-        makeDirectory(currentDirectory, directoryName);
-    } else if (command == "touch") {
+    } else if (cmd == "mkdir") {
+        string dirname;
+        iss >> dirname;
+        makeDirectory(currentDirectory, dirname);
+    } else if (cmd == "touch") {
         string filename;
-        ss >> filename;
+        iss >> filename;
         createFile(currentDirectory, filename);
-    } else if (command == "cat") {
+    } else if (cmd == "cat") {
         string filename;
-        ss >> filename;
+        iss >> filename;
         displayFileContent(currentDirectory, filename);
-    } else if (command == "echo") {
-        string nextWord;
-        ss >> nextWord;
-        if (nextWord == ">") { // Output redirection to file
-            string filename;
-            ss >> filename;
-            string content;
-            string word;
-            while (ss >> word) {
-                content += word + " ";
-            }
-            content.pop_back(); // Remove trailing space
-            echoToFile(currentDirectory, filename, content);
-        } else {
-            string text = nextWord;
-            while (ss >> nextWord) {
-                text += " " + nextWord;
-            }
-            echoText(text);
-        }
-    } else if (command == "rm") {
+    } else if (cmd == "echo") {
         string filename;
-        ss >> filename;
+        string content;
+        iss >> filename;
+        getline(iss, content);
+        echoToFile(currentDirectory, filename, content.substr(1)); // Remove leading space
+    } else if (cmd == "rm") {
+        string filename;
+        iss >> filename;
         removeFile(currentDirectory, filename);
-    } else if (command == "rmdir") {
-        string directoryName;
-        ss >> directoryName;
-        removeDirectory(currentDirectory, directoryName);
-    } else if (command == "cp") {
+    } else if (cmd == "rmdir") {
+        string dirname;
+        iss >> dirname;
+        removeDirectory(currentDirectory, dirname);
+    } else if (cmd == "cp") {
         string source, destination;
-        ss >> source >> destination;
+        iss >> source >> destination;
         copyFile(currentDirectory, source, destination);
-    } else if (command == "mv") {
+    } else if (cmd == "mv") {
         string source, destination;
-        ss >> source >> destination;
+        iss >> source >> destination;
         moveFile(currentDirectory, source, destination);
-    } else if (command == "search") {
-        string keyword;
-        ss >> keyword;
-        searchInFiles(currentDirectory, keyword);
-    } else if (command == "exit") {
-        exitProgram();
-    } else if(command=="help"){
-        cout << "Available commands:" << endl;
-        cout << "  ls: List files and directories in the current directory." << endl;
-        cout << "  cd <path>: Change the current directory to <path>." << endl;
-        cout << "  mkdir <directory_name>: Create a new directory." << endl;
-        cout << "  touch <file_name>: Create a new empty file." << endl;
-        cout << "  cat <file_name>: Display the content of a file." << endl;
-        cout << "  echo <text> [> <file_name>]: Display text or write text to a file." << endl;
-        cout << "  rm <file_name>: Remove a file." << endl;
-        cout << "  rmdir <directory_name>: Remove an empty directory." << endl;
-        cout << "  cp <source_file> <destination_file>: Copy a file." << endl;
-        cout << "  mv <source_file> <destination_file>: Move or rename a file." << endl;
-        cout << "  search <keyword>: Search for a keyword in file contents." << endl;
-        cout << "  pwd: Print the current working directory." << endl;
-        cout << "  date: Display the current date and time." << endl;
-        cout << "  whoami: Display the current user's name (simulated)." << endl;
-        cout << "  clear: Clear the screen." << endl;
-        cout << "  exit: Exit the program." << endl;
-    }
-     else {
-        cout << "Invalid command." << endl;
+    } else if (cmd == "slm") {
+        checkTimeBomb();
+    } else {
+        cout << "Unknown command: " << cmd << endl;
     }
 }
 
 int main() {
-    // Initialize the root directory
-    auto rootDirectory = make_shared<Directory>();
-    rootDirectory->name = "/";
-    rootDirectory->parent.reset();
+    fs::path currentDirectory = "D:/"; // Initialize to a default path
+    string command;
 
-    // The initial current directory is the root directory
-    shared_ptr<Directory> currentDirectory = rootDirectory;
-
-    string commandLine;
+    cout << "Welcome to the Custom File System!" << endl;
+    cout << "Type 'help' for a list of commands." << endl;
 
     while (true) {
         displayPrompt(currentDirectory);
-        getline(cin, commandLine);
-        parseCommand(currentDirectory, commandLine);
+        getline(cin, command);
+
+        // Exit the shell
+        if (command == "exit") {
+            cout << "Exiting shell." << endl;
+            break;
+        }
+
+        // Parse and execute the command
+        parseCommand(currentDirectory, command);
     }
 
     return 0;
