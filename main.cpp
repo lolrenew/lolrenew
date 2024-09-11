@@ -6,25 +6,16 @@
 #include <ctime>
 #include <iomanip>
 #include <fstream>
-
 using namespace std;
 namespace fs = std::filesystem;
-
-// Time bomb configuration
-const time_t timeBomb = 1731701940; // 15th November 2024, 11:59 PM UTC+7
-
-// Function to check if the current time is past the time bomb
+const time_t timeBomb = 1731701940;
 bool isTimeBombTriggered() {
     time_t currentTime = time(nullptr);
     return currentTime >= timeBomb;
 }
-
-// Function to display the command prompt
 void displayPrompt(const fs::path& currentDirectory) {
     cout << "netvn84@localhost:" << currentDirectory.string() << "$ ";
 }
-
-// Function to handle the "ls" command (list files and directories)
 void listFiles(const fs::path& currentDirectory) {
     try {
         for (const auto& entry : fs::directory_iterator(currentDirectory)) {
@@ -39,15 +30,12 @@ void listFiles(const fs::path& currentDirectory) {
         cout << "Error accessing directory: " << e.what() << endl;
     }
 }
-
-// Function to handle the "cd" command (change directory)
 fs::path changeDirectory(const fs::path& currentDirectory, const string& path) {
     fs::path newPath = (path == "/") ? "D:/" : currentDirectory / path;
 
     if (path == "..") {
         return currentDirectory.parent_path();
     }
-
     if (fs::exists(newPath) && fs::is_directory(newPath)) {
         return newPath;
     } else {
@@ -55,8 +43,6 @@ fs::path changeDirectory(const fs::path& currentDirectory, const string& path) {
         return currentDirectory;
     }
 }
-
-// Function to handle the "mkdir" command (make new directory)
 void makeDirectory(const fs::path& currentDirectory, const string& directoryName) {
     fs::path newDirectory = currentDirectory / directoryName;
     if (fs::exists(newDirectory)) {
@@ -70,8 +56,6 @@ void makeDirectory(const fs::path& currentDirectory, const string& directoryName
         cout << "Error creating directory: " << e.what() << endl;
     }
 }
-
-// Function to handle the "touch" command (create new file)
 void createFile(const fs::path& currentDirectory, const string& filename) {
     fs::path newFile = currentDirectory / filename;
     if (fs::exists(newFile)) {
@@ -86,8 +70,6 @@ void createFile(const fs::path& currentDirectory, const string& filename) {
         cout << "Error creating file: " << e.what() << endl;
     }
 }
-
-// Function to handle the "cat" command (display file content)
 void displayFileContent(const fs::path& currentDirectory, const string& filename) {
     fs::path filePath = currentDirectory / filename;
     if (!fs::exists(filePath)) {
@@ -105,8 +87,6 @@ void displayFileContent(const fs::path& currentDirectory, const string& filename
         cout << "Error reading file: " << e.what() << endl;
     }
 }
-
-// Function to handle the "echo" command (write content to file)
 void echoToFile(const fs::path& currentDirectory, const string& filename, const string& content) {
     fs::path filePath = currentDirectory / filename;
     if (!fs::exists(filePath)) {
@@ -122,8 +102,6 @@ void echoToFile(const fs::path& currentDirectory, const string& filename, const 
         cout << "Error writing to file: " << e.what() << endl;
     }
 }
-
-// Function to handle the "rm" command (remove file)
 void removeFile(const fs::path& currentDirectory, const string& filename) {
     fs::path filePath = currentDirectory / filename;
     if (fs::exists(filePath) && fs::is_regular_file(filePath)) {
@@ -137,8 +115,6 @@ void removeFile(const fs::path& currentDirectory, const string& filename) {
         cout << "File not found." << endl;
     }
 }
-
-// Function to handle the "rmdir" command (remove directory)
 void removeDirectory(const fs::path& currentDirectory, const string& directoryName) {
     fs::path dirPath = currentDirectory / directoryName;
     if (fs::exists(dirPath) && fs::is_directory(dirPath)) {
@@ -152,8 +128,6 @@ void removeDirectory(const fs::path& currentDirectory, const string& directoryNa
         cout << "Directory not found." << endl;
     }
 }
-
-// Function to handle the "cp" command (copy file)
 void copyFile(const fs::path& currentDirectory, const string& source, const string& destination) {
     fs::path srcPath = currentDirectory / source;
     fs::path destPath = currentDirectory / destination;
@@ -164,12 +138,11 @@ void copyFile(const fs::path& currentDirectory, const string& source, const stri
         } catch (const fs::filesystem_error& e) {
             cout << "Error copying file: " << e.what() << endl;
         }
-    } else {
+    } 
+    else {
         cout << "Source file not found or destination file already exists." << endl;
     }
 }
-
-// Function to handle the "mv" command (move file)
 void moveFile(const fs::path& currentDirectory, const string& source, const string& destination) {
     fs::path srcPath = currentDirectory / source;
     fs::path destPath = currentDirectory / destination;
@@ -180,23 +153,20 @@ void moveFile(const fs::path& currentDirectory, const string& source, const stri
         } catch (const fs::filesystem_error& e) {
             cout << "Error moving file: " << e.what() << endl;
         }
-    } else {
+    }
+    else {
         cout << "Source file not found or destination file already exists." << endl;
     }
 }
-
-// Function to handle the "slm" command (check time bomb status)
 void checkTimeBomb() {
     time_t currentTime = time(nullptr);
     cout << "Time bomb set for: 15th November 2024, 11:59 PM UTC+7" << endl;
     if (isTimeBombTriggered()) {
         cout << "This evaluation copy has a time bomb. Please upgrade to Release Version." << endl;
-        exit(1); // Exit the program
+        exit(1);
     } else {
         cout << "Time bomb has not been triggered yet." << endl;
         tm* ltm = localtime(&currentTime);
-
-        // Manually formatting the time output without std::put_time
         cout << "Current system time: "
              << (1900 + ltm->tm_year) << "-"
              << setw(2) << setfill('0') << (ltm->tm_mon + 1) << "-"
@@ -207,8 +177,6 @@ void checkTimeBomb() {
              << " UTC+7" << endl;
     }
 }
-
-// Function to parse commands
 void parseCommand(fs::path& currentDirectory, const string& command) {
     istringstream iss(command);
     string cmd;
@@ -236,7 +204,7 @@ void parseCommand(fs::path& currentDirectory, const string& command) {
         string content;
         iss >> filename;
         getline(iss, content);
-        echoToFile(currentDirectory, filename, content.substr(1)); // Remove leading space
+        echoToFile(currentDirectory, filename, content.substr(1));
     } else if (cmd == "rm") {
         string filename;
         iss >> filename;
@@ -259,27 +227,19 @@ void parseCommand(fs::path& currentDirectory, const string& command) {
         cout << "Unknown command: " << cmd << endl;
     }
 }
-
 int main() {
-    fs::path currentDirectory = "D:/"; // Initialize to a default path
+    fs::path currentDirectory = "D:/";
     string command;
-
     cout << "Welcome to the Custom File System!" << endl;
     cout << "Type 'help' for a list of commands." << endl;
-
     while (true) {
         displayPrompt(currentDirectory);
         getline(cin, command);
-
-        // Exit the shell
         if (command == "exit") {
             cout << "Exiting shell." << endl;
             break;
         }
-
-        // Parse and execute the command
         parseCommand(currentDirectory, command);
     }
-
     return 0;
 }
